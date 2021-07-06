@@ -302,26 +302,23 @@ test<- list(All_CIS, All_CIS_Con, All_Neg, All_RRMS_NA) %>%
         reduce(full_join, by = "Target")
 test[is.na(test)] = 0
 test<- test %>% gather(sample, value, -Target)
+test<- test %>% separate(sample, c("Diagnosis", "Measure"), sep = "([.])")
+degree<- which(test$Measure=="Degree")
+degree<- test[degree,]
+close<- which(test$Measure=="Closeness")
+close<- test[close,]
 
-#Export to excel
-write.csv(test, file= "Paper.Centrality.csv")
+#Merge two tables by target and diagnosis and clean up
+influential <- merge(close,degree,by=c("Target", "Diagnosis"))
+drops<- c("Measure.x", "Measure.y")
+influential<- influential[, !(names(influential) %in% drops)]
+influential <-influential %>% rename(Closeness = value.x, 
+                Degree = value.y)
 
-#Had to clean data in Excel AND SORT BY TWO VARIABLES
 
-test2<- read_excel("C:/Users/norawelsh/Desktop/Dyna July2020/Paper.Centrality.xlsx")
-test2<- data.frame(test2, row.names = 1)
-
-#Example of what data should look like
-#       Target Disease.Course    Closeness Degree
-#1        CCL1            CIS 0.0004364906      3
-#2       CCL11            CIS 0.0004397537      4
-#3       CCL13            CIS 0.0003495281      3
-#4       CCL19            CIS 0.0004384042      4
-#5       CCL26            CIS 0.0004387889      5
   
 #Plot Influential targets
-ggplot(test2, aes(x=Disease.Course, y=Target, size = Degree, color = Closeness)) +geom_point(alpha = 0.75) +
+ggplot(influential, aes(x=Diagnosis, y=Target, size = Degree, color = Closeness)) +geom_point(alpha = 0.75) +
         labs( x= "Disease Course", y="Targets", color = "Closeness") + 
         scale_color_gradient(low = "red", high = "blue", limits=c(0.0002, .0022)) + theme_bw()
-
 
