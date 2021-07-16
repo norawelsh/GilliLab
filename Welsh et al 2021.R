@@ -18,7 +18,6 @@ library(igraph)
 library(reshape2)
 library(limma)
 library(readxl)
-library(column_to_rownames)
 library(Hmisc)
 library(readxl)
 library(data.table)
@@ -50,12 +49,17 @@ disease_nodes <- read.csv("C:/Users/norawelsh/Desktop/Dyna July2020/Disease Node
 #List from Info sheet which data to pull
 
 CIS<- which(info$Diagnosis=="CIS")
+list_CIS<- info$Patient[CIS]
 CISCon <- which(info$Diagnosis=="CISCON")
+list_CISCon<- (info$Patient[CISCon])
 RRMS <- which(info$Diagnosis=="RRMS",)
+list_RRMS<- info$Patient[RRMS]
 Neg <- which(info$Diagnosis=="NEG")
+list_Neg<- info$Patient[Neg]
 
 #Generalized holder, change which group you are analyzing
 group_holder<- CISCon
+group_list<- as.matrix(list_CISCon)
 
 
 #Analyze Data with similarity matrices
@@ -112,21 +116,15 @@ Final_list<- Reduce(intersect, list(netgroup_holderedges_Pvalues, group_holdered
 #output is Pearson Correlation between every gene for each patient 
 cormat <- lioness(index, netFun)
 cormat
-#Only choose patients from group
-COL<- cormat[,c(1,2)]
-NUM<- cormat[,group_holder+2]
 
-#Unsorted Correlations of all group_holder Patients
-Lioness_net_group_holder<- cbind(COL, NUM)
+#new way to subset since we are in a summarized experiment now
+l_net_group_holder <- as.data.frame(assay(cormat[which(row.names(cormat) %in% Final_list), ]))
+l_net_group_holder<- tibble::rownames_to_column(l_net_group_holder, "Targets")
+l_net_group_holder<- l_net_group_holder %>% separate(Targets, c("Tar", "Reg"), sep = "([_])")
+row.names(l_net_group_holder) <- paste(l_net_group_holder[,1], l_net_group_holder[,2], sep="_")
 
-#paste row.names from adjacency matrix so rows are the same
-row.names(Lioness_net_group_holder) <- paste(Lioness_net_group_holder[,1], 
-                                             Lioness_net_group_holder[,2], sep="_")
-
-#Choose targets that are the same as list made above and print first two columns 
-l_net_group_holder<- Lioness_net_group_holder[which(row.names(Lioness_net_group_holder) %in% Final_list ), 
-                            1:ncol(Lioness_net_group_holder)]
-
+#Subset out patients 
+Lioness_net_group_holder<- l_net_group_holder[,group_list]
 
 #Making Aggregate Network, no row columns so we can analyze
 l_net_group_holder_agg<- Lioness_net_group_holder[which(row.names(Lioness_net_group_holder)
@@ -148,6 +146,8 @@ net_group_holder_Lioness <- graph_from_data_frame(d=Agg_net, vertices = disease_
 l_graphopt_group_holder_Lioness <- layout_with_graphopt(net_group_holder_Lioness, charge=0.08)
 
 
+
+par(mfrow=c(1,1))
 #coloring
 #Inflammatory vs CNS Targets
 catergory_color <- c("pink","light blue")
@@ -308,17 +308,25 @@ degree<- test[degree,]
 close<- which(test$Measure=="Closeness")
 close<- test[close,]
 
-#Merge two tables by target and diagnosis and clean up
+#Merge two tables by target and degree and clean up
 influential <- merge(close,degree,by=c("Target", "Diagnosis"))
 drops<- c("Measure.x", "Measure.y")
 influential<- influential[, !(names(influential) %in% drops)]
 influential <-influential %>% rename(Closeness = value.x, 
                 Degree = value.y)
 
+influential<- influential %>% arrange(desc(Closeness))
+  library(forcats)
 
-  
+
 #Plot Influential targets
-ggplot(influential, aes(x=Diagnosis, y=Target, size = Degree, color = Closeness)) +geom_point(alpha = 0.75) +
+influential<- influential %>%  arrange(desc(Closeness)) %>%
+mutate(Target = factor(Target, levels = Target))
+
+
+
+ggplot( influential, aes(x=Diagnosis, y=Target, size = Degree, color = Closeness)) +geom_point(alpha = 0.75) +
         labs( x= "Disease Course", y="Targets", color = "Closeness") + 
         scale_color_gradient(low = "red", high = "blue", limits=c(0.0002, .0022)) + theme_bw()
+
 
