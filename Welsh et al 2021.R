@@ -26,7 +26,11 @@ library(ggplot2)
 library(reshape2)
 library(tidyr)
 library(tidyverse)
-library("imputeTS")
+library(GenomicRanges)
+library(SummarizedExperiment)
+library(MultiAssayExperiment)
+library(devtools)
+
 
 
 #Read in data
@@ -58,8 +62,8 @@ Neg <- which(info$Diagnosis=="NEG")
 list_Neg<- info$Patient[Neg]
 
 #Generalized holder, change which group you are analyzing
-group_holder<- CISCon
-group_list<- as.matrix(list_CISCon)
+group_holder<- CIS
+group_list<- as.matrix(list_CIS)
 
 
 #Analyze Data with similarity matrices
@@ -156,7 +160,7 @@ catergory_color <- c("pink","light blue")
 holder <- net_group_holder_Lioness
 l_holder <- l_graphopt_group_holder_Lioness
 l_holder<- norm_coords(l_holder,ymin = -1, ymax = 1, xmin = -1, xmax = 1)
-graph_name <- "CIS Con" #Change this to title of group currently analyzing
+graph_name <- "CIS" #Change this to title of group currently analyzing
 
 #Inflammatory v CNS injury graphopt
 V(holder)$color <- catergory_color[V(holder)$category]
@@ -172,6 +176,8 @@ plot(holder,
      vertex.frame.color = "white",
      rescale=F,
      layout=l_holder*1.2)
+
+
 legend(x=-1.5,y=-1.5,c("Inflammatory","CNS Injury"),
        pch=21,col="#777777",pt.bg=catergory_color, pt.cex=2,cex=.8,bty="n",ncol=3)
 
@@ -179,7 +185,7 @@ legend(x=-1.5,y=-1.5,c("Inflammatory","CNS Injury"),
 #Community Graph
 clp <- cluster_optimal(holder)
 class(clp)
-V(holder)$color <- type_color[V(holder)$type]
+
 plot(clp, holder,
      edge.arrow.size=0.07,
      edge.color = "grey",
@@ -221,6 +227,9 @@ plot(holder, edge.arrow.size=0.1,
      main=graph_Ame,
      rescale=F,
      layout=l_holder*1.2)
+
+
+
 legend(x=-1.5,y=-1.5,c("Inflammatory","CNS Injury"),
        pch=21,col="#777777",pt.bg=catergory_color, pt.cex=2,cex=.8,bty="n",ncol=3)
 
@@ -237,7 +246,7 @@ l_graphopt_Ngroup_holder <- layout_with_graphopt(Nnet_group_holder, charge=.08)
 holder <- Nnet_group_holder
 l_holder <- l_graphopt_Ngroup_holder
 l_holder<- norm_coords(l_holder,ymin = -1, ymax = 1, xmin = -1, xmax = 1)
-graph_name <- "group_holder"  #Change this
+graph_name <- "CIS"  #Change this
 
 
 #Inflammatory v CNS injury, CNS targets
@@ -261,34 +270,34 @@ plot(holder,
 
 CC<- as.data.frame(closeness(net_group_holder_Lioness))
 CC<- CC[order(CC$`closeness(net_group_holder_Lioness)`), , drop = FALSE]
-CC20<- tail (CC, 56)
+CC20<- tail (CC, 20)
 setDT(CC20, keep.rownames = TRUE)
 
 
 #Degree of network
 deg<- as.data.frame(degree(net_group_holder_Lioness))
 deg<- deg[order(deg$`degree(net_group_holder_Lioness)`), , drop = FALSE]
-deg20<- tail(deg, 56)
+deg20<- tail(deg, 20)
 setDT(deg20, keep.rownames = TRUE)
 
 #Intersecting Targets from Closeness and Degree lists
 Topgroup_holder<-intersect(deg20$rn, CC20$rn)
 
 #Creating a dataframe that has all targets from list above and value from Closeness measurment
-TC_group_holder<- CC20[CC20$rn %in% Topgroup_holder,]
-TC_group_holder <-TC_group_holder %>% rename(Target = rn, 
-                                            group_holder.Closeness = 'closeness(net_group_holder_Lioness)')
+TC_group_holder<- as.data.frame(CC20[CC20$rn %in% Topgroup_holder,])
+names(TC_group_holder)[1]<- "Target"
+names(TC_group_holder)[2]<- "CIS_Con.Closeness"#Change Group name based on which group you are working on
+
 
 TD_group_holder<- deg20[deg20$rn %in% Topgroup_holder]
-TD_group_holder <-TD_group_holder %>% rename(Target = rn, 
-                                            group_holder.Degree = 'degree(net_group_holder_Lioness)' )
-
+names(TD_group_holder)[1]<- "Target"
+names(TD_group_holder)[2]<- "CIS_Con.Degree" #Change Group name based on which group you are working on
 
 All_group_holder<- merge(TC_group_holder, TD_group_holder)# Change these so they are named by group
-All_group_holder<- All_CIS
-All_group_holder<- All_CIS_Con
-All_group_holder<- All_Neg
-All_group_holder<- All_RRMS_NA
+All_CIS<- All_group_holder
+All_CIS_Con<- All_group_holder
+All_Neg<- All_group_holder
+All_RRMS<- All_group_holder
 
 write.csv(All_group_holder,
           file="group_holder.All.csv")  #Change File name so all group names are different
@@ -298,8 +307,11 @@ write.csv(All_group_holder,
 #Making plot of all 'Influential' Points in each Network
 #Plotting with degree and closeness as variables
 #Combine all objects by targets and clean data
-test<- list(All_CIS, All_CIS_Con, All_Neg, All_RRMS_NA) %>% 
-        reduce(full_join, by = "Target")
+
+
+test<- list(All_CIS, All_CIS_Con, All_Neg, All_RRMS) %>% 
+        purrr::reduce(full_join, by = "Target")
+
 test[is.na(test)] = 0
 test<- test %>% gather(sample, value, -Target)
 test<- test %>% separate(sample, c("Diagnosis", "Measure"), sep = "([.])")
@@ -312,7 +324,7 @@ close<- test[close,]
 influential <- merge(close,degree,by=c("Target", "Diagnosis"))
 drops<- c("Measure.x", "Measure.y")
 influential<- influential[, !(names(influential) %in% drops)]
-influential <-influential %>% rename(Closeness = value.x, 
+influential <-influential %>% dplyr::rename(Closeness = value.x, 
                 Degree = value.y)
 
 influential<- influential %>% arrange(desc(Closeness))
@@ -320,13 +332,10 @@ influential<- influential %>% arrange(desc(Closeness))
 
 
 #Plot Influential targets
-influential<- influential %>%  arrange(desc(Closeness)) %>%
-mutate(Target = factor(Target, levels = Target))
-
 
 
 ggplot( influential, aes(x=Diagnosis, y=Target, size = Degree, color = Closeness)) +geom_point(alpha = 0.75) +
         labs( x= "Disease Course", y="Targets", color = "Closeness") + 
-        scale_color_gradient(low = "red", high = "blue", limits=c(0.0002, .0022)) + theme_bw()
+        scale_color_gradient(low = "red", high = "blue", limits=c(0.0002, .00499)) + theme_bw()
 
 
